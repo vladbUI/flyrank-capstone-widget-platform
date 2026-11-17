@@ -1,0 +1,25 @@
+name: flyrank-capstone-widget-platform
+capstone: embeddable-widget-lead-capture
+run: docker compose up -d --build
+seed: docker compose exec -T api npm run seed
+test: docker compose exec -T api npm test
+base_url: http://localhost:3000
+second_origin: http://localhost:5500
+demo_api_keys:
+  tenant_a: demo-key-tenant-a
+  tenant_b: demo-key-tenant-b
+demo_widgets:
+  newsletter_a: 11111111-1111-4111-8111-111111111111
+  contact_a: 22222222-2222-4222-8222-222222222222
+  newsletter_b: 33333333-3333-4333-8333-333333333333
+endpoints:
+  health: GET /health
+  widget_script: GET /widget.js?id={widget_id}
+  widget_config: GET /v1/widgets/{widget_id}/config
+  submit: POST /v1/widgets/{widget_id}/submissions
+  admin_widgets: GET|POST /v1/admin/widgets
+  admin_widget: GET|PATCH|DELETE /v1/admin/widgets/{widget_id}
+  admin_submissions: GET /v1/admin/submissions
+  admin_stats: GET /v1/admin/stats
+  dashboard: GET /dashboard
+  dev_toggles: GET|POST /dev/toggles   # {"geoA":"up|down","geoB":"up|down","email":"ok|fail"}
