@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-widget}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-widget}
+      POSTGRES_DB: ${POSTGRES_DB:-widgets}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-widget} -d ${POSTGRES_DB:-widgets}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-widget}:${POSTGRES_PASSWORD:-widget}@db:5432/${POSTGRES_DB:-widgets}
+      PORT: 3000
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      GEO_MODE: ${GEO_MODE:-mock}
+      GEO_TIMEOUT_MS: ${GEO_TIMEOUT_MS:-1500}
+      DEV_TOOLS: ${DEV_TOOLS:-true}
+      RATE_LIMIT_IP_WIDGET_MAX: ${RATE_LIMIT_IP_WIDGET_MAX:-20}
+      RATE_LIMIT_IP_WIDGET_WINDOW_MS: ${RATE_LIMIT_IP_WIDGET_WINDOW_MS:-10000}
+      RATE_LIMIT_WIDGET_MAX: ${RATE_LIMIT_WIDGET_MAX:-100}
+      RATE_LIMIT_WIDGET_WINDOW_MS: ${RATE_LIMIT_WIDGET_WINDOW_MS:-60000}
+      DEMO_KEY_A: ${DEMO_KEY_A:-demo-key-tenant-a}
+      DEMO_KEY_B: ${DEMO_KEY_B:-demo-key-tenant-b}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # The "customer website": a plain static page on a different origin (port 5500)
+  site:
+    image: nginx:1.27-alpine
+    ports:
+      - "5500:80"
+    volumes:
+      - ./test-site:/usr/share/nginx/html:ro
+
+volumes:
+  pgdata:
