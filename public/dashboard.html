@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Widget Dashboard</title>
+  <style>
+    :root {
+      --bg: #fafafa; --surface: #fff; --line: #e4e4e7; --text: #18181b; --muted: #52525b; --faint: #71717a;
+      --accent: #2563eb; --danger: #b42318; --radius: 12px;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    ::selection { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+    main { max-width: 1080px; margin: 0 auto; padding: 32px 16px 64px; }
+    header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 32px; }
+    h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -.02em; }
+    header p { margin: 4px 0 0; color: var(--muted); }
+    h2 { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+    form { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+    label { display: grid; gap: 4px; font-size: 13px; font-weight: 500; }
+    input { width: 240px; padding: 8px 10px; border: 1px solid #d4d4d8; border-radius: 8px; background: var(--surface); color: inherit; font: inherit; }
+    input:hover { border-color: #a1a1aa; }
+    input:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+    button { padding: 8px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { filter: brightness(.92); }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    button:disabled { opacity: .6; cursor: progress; }
+    #err { flex-basis: 100%; margin: 0; color: var(--danger); font-size: 13px; }
+    #err:empty { display: none; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 32px; }
+    .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; min-width: 0; }
+    .scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    tr:last-child td { border-bottom: 0; }
+    th { color: var(--faint); font-size: 12px; font-weight: 500; white-space: nowrap; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    td.when { white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .data dt { display: inline; color: var(--faint); }
+    .data dd { display: inline; margin: 0 12px 0 4px; overflow-wrap: anywhere; }
+    .empty { margin: 0; padding: 8px 0; color: var(--faint); }
+    #subs th:first-child, #subs td:first-child { padding-left: 0; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Submissions</h1>
+      <p>Leads captured by your widgets, newest first.</p>
+    </div>
+    <form id="f">
+      <label>API key <input id="key" type="password" autocomplete="off" required></label>
+      <button id="load">Load submissions</button>
+      <p id="err" role="alert"></p>
+    </form>
+  </header>
+
+  <div class="grid">
+    <section class="panel"><h2>Per widget</h2><div id="perWidget"><p class="empty">Enter your API key to load data.</p></div></section>
+    <section class="panel"><h2>By country</h2><div id="byCountry"><p class="empty">—</p></div></section>
+    <section class="panel"><h2>Per day, last 30 days</h2><div id="perDay"><p class="empty">—</p></div></section>
+  </div>
+
+  <section class="panel">
+    <h2>Latest 50 submissions</h2>
+    <div class="scroll" id="subs"><p class="empty">—</p></div>
+  </section>
+</main>
+
+<script>
+  // DOM is built with textContent only: submission data is untrusted visitor input.
+  function el(tag, text, cls) {
+    const n = document.createElement(tag);
+    if (text != null) n.textContent = text;
+    if (cls) n.className = cls;
+    return n;
+  }
+  // cols: [label, (row) => string | Node, 'num' | 'when' | undefined]
+  function table(id, cols, rows, emptyText) {
+    const box = document.getElementById(id);
+    if (!rows.length) return box.replaceChildren(el('p', emptyText, 'empty'));
+    const t = el('table');
+    const head = t.createTHead().insertRow();
+    cols.forEach(([label, , cls]) => head.appendChild(el('th', label, cls)));
+    const body = t.createTBody();
+    rows.forEach((r) => {
+      const tr = body.insertRow();
+      cols.forEach(([, get, cls]) => {
+        const v = get(r);
+        const td = tr.insertCell();
+        if (cls) td.className = cls;
+        v instanceof Node ? td.appendChild(v) : (td.textContent = v ?? '');
+      });
+    });
+    box.replaceChildren(t);
+  }
+  function fields(data) {
+    const dl = el('dl', null, 'data');
+    dl.style.margin = 0;
+    for (const [k, v] of Object.entries(data)) { dl.append(el('dt', k), el('dd', v)); }
+    return dl;
+  }
+
+  document.getElementById('f').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const headers = { Authorization: 'Bearer ' + document.getElementById('key').value };
+    const err = document.getElementById('err');
+    const btn = document.getElementById('load');
+    err.textContent = '';
+    btn.disabled = true;
+    btn.textContent = 'Loading…';
+    try {
+      const [stats, subs] = await Promise.all(['/v1/admin/stats', '/v1/admin/submissions?limit=50'].map(async (u) => {
+        const r = await fetch(u, { headers });
+        if (r.status === 401) throw new Error('That API key wasn’t recognised. Check it and try again.');
+        if (!r.ok) throw new Error('The server couldn’t load your data. Try again in a moment.');
+        return r.json();
+      }));
+      const titles = Object.fromEntries(stats.perWidget.map((w) => [w.widgetId, w.title]));
+      table('perWidget', [['Widget', (r) => r.title], ['Submissions', (r) => r.count, 'num']], stats.perWidget, 'You have no widgets yet.');
+      table('byCountry', [['Country', (r) => (r.country === 'unknown' ? 'Unknown' : r.country)], ['Submissions', (r) => r.count, 'num']], stats.byCountry, 'No submissions yet.');
+      table('perDay', [['Day', (r) => r.day], ['Submissions', (r) => r.count, 'num']], stats.perDay, 'No submissions in the last 30 days.');
+      table('subs', [
+        ['Received', (r) => new Date(r.createdAt).toLocaleString(), 'when'],
+        ['Widget', (r) => titles[r.widgetId] ?? r.widgetId.slice(0, 8)],
+        ['Fields', (r) => fields(r.data)],
+        ['Location', (r) => (r.geo ? [r.geo.city, r.geo.country].filter(Boolean).join(', ') : 'Unknown')],
+      ], subs.data, 'No submissions yet. They appear here as soon as a visitor sends a form.');
+    } catch (ex) {
+      err.textContent = ex.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Load submissions';
+    }
+  });
+</script>
+</body>
+</html>
